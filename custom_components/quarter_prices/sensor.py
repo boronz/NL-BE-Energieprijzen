@@ -1,0 +1,716 @@
+"""Sensor platform for the Quarter Prices integration."""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
+
+from .const import FEED_IN_VAT_RATE, PRICE_UNIT_EUR_KWH
+from .coordinator import QuarterPricesCoordinator
+from .entity import QuarterPricesEntity
+from .optimal_period import (
+    get_optimal_cheap_enabled,
+    get_optimal_expensive_enabled,
+)
+from .price import (
+    MARKET_PRICE_FIELD,
+    calculate_feed_in_price,
+    calculation_method,
+    get_apply_feed_in_vat,
+    get_feed_in_adjustment,
+)
+
+if TYPE_CHECKING:
+    from . import QuarterPricesConfigEntry
+
+_LOGGER = logging.getLogger(__name__)
+
+# Definitions for the cheapest / most expensive sensors.
+# Each tuple is: (base, day, label, coordinator helper, is_tomorrow).
+_EXTREMUM_DEFINITIONS: tuple[tuple[str, str, str, str, bool], ...] = (
+    ("cheapest", "today", "Cheapest", "get_cheapest_today", False),
+    ("most_expensive", "today", "Most expensive", "get_most_expensive_today", False),
+    ("cheapest", "tomorrow", "Cheapest", "get_cheapest_tomorrow", True),
+    (
+        "most_expensive",
+        "tomorrow",
+        "Most expensive",
+        "get_most_expensive_tomorrow",
+        True,
+    ),
+)
+
+# Definitions for the four price-zone boundary sensors.
+# Each tuple is: (key, name, coordinator helper, zone edge, icon).
+_ZONE_DEFINITIONS: tuple[tuple[str, str, str, str, str], ...] = (
+    (
+        "cheap_zone_start_today",
+        "Cheap zone start today",
+        "get_cheap_zone",
+        "start",
+        "mdi:clock-start",
+    ),
+    (
+        "cheap_zone_end_today",
+        "Cheap zone end today",
+        "get_cheap_zone",
+        "end",
+        "mdi:clock-end",
+    ),
+    (
+        "expensive_zone_start_today",
+        "Expensive zone start today",
+        "get_expensive_zone",
+        "start",
+        "mdi:clock-start",
+    ),
+    (
+        "expensive_zone_end_today",
+        "Expensive zone end today",
+        "get_expensive_zone",
+        "end",
+        "mdi:clock-end",
+    ),
+)
+
+# The two optional optimal-period features, each with its today and tomorrow
+# sensor. Each tuple is: (feature key, icon, ((key, name, coordinator helper),
+# ...)). The feature key is only used to decide whether the pair is created.
+_OPTIMAL_DEFINITIONS: tuple[tuple[str, str, tuple[tuple[str, str, str], ...]], ...] = (
+    (
+        "cheap",
+        "mdi:clock-check",
+        (
+            (
+                "optimal_cheap_period_today",
+                "Optimal cheap period today",
+                "get_optimal_cheap_today",
+            ),
+            (
+                "optimal_cheap_period_tomorrow",
+                "Optimal cheap period tomorrow",
+                "get_optimal_cheap_tomorrow",
+            ),
+        ),
+    ),
+    (
+        "expensive",
+        "mdi:clock-alert",
+        (
+            (
+                "optimal_expensive_period_today",
+                "Optimal expensive period today",
+                "get_optimal_expensive_today",
+            ),
+            (
+                "optimal_expensive_period_tomorrow",
+                "Optimal expensive period tomorrow",
+                "get_optimal_expensive_tomorrow",
+            ),
+        ),
+    ),
+)
+
+
+def _hhmm(value: Any) -> str | None:
+    """Format a datetime as a local ``HH:MM`` string."""
+    if not isinstance(value, datetime):
+        return None
+    return dt_util.as_local(value).strftime("%H:%M")
+
+
+def _local_iso(value: Any) -> str | None:
+    """Return a local ISO datetime string for the given value."""
+    if not isinstance(value, datetime):
+        return None
+    return dt_util.as_local(value).isoformat()
+
+
+def _block_attributes(block: dict[str, Any] | None) -> dict[str, Any]:
+    """Return the shared attributes for a single price block.
+
+    ``time`` is the block's local start time (``HH:MM``); ``timestamp`` and
+    ``end_timestamp`` are the local ISO start/end datetimes.
+    """
+    if block is None:
+        return {}
+    return {
+        "time": _hhmm(block.get("from")),
+        "timestamp": _local_iso(block.get("from")),
+        "end_timestamp": _local_iso(block.get("till")),
+        "duration_minutes": block.get("duration_minutes"),
+        "full_block": _full_block(block),
+    }
+
+
+def _full_block(block: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return a serializable copy of a price block with local ISO times."""
+    if block is None:
+        return None
+    full = dict(block)
+    start = block.get("from")
+    till = block.get("till")
+    if isinstance(start, datetime):
+        full["from"] = dt_util.as_local(start).isoformat()
+    if isinstance(till, datetime):
+        full["till"] = dt_util.as_local(till).isoformat()
+    return full
+
+
+def _serialize_prices(prices: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Serialize a list of price blocks for use in attributes."""
+    return [b for b in (_full_block(p) for p in prices) if b is not None]
+
+
+def zone_attributes(zone: dict[str, Any] | None, edge: str) -> dict[str, Any]:
+    """Return the shared attribute contract for one price-zone boundary.
+
+    All four zone sensors publish the same key set, produced here exactly once,
+    so each entity is independently usable in a template or automation without
+    having to look up its sibling — while the values still come from the single
+    zone the coordinator derived.
+    """
+    if zone is None:
+        return {}
+    return {
+        # Convenience mirror of the state in the ``HH:MM`` style the existing
+        # ``*_time_today`` sensors use; the state itself is a real timestamp.
+        "time": _hhmm(zone.get(edge)),
+        "zone_start": _local_iso(zone.get("start")),
+        "zone_end": _local_iso(zone.get("end")),
+        "margin_percent": zone.get("margin_percent"),
+        "threshold_eur_kwh": zone.get("threshold_eur_kwh"),
+        "day_min_price": zone.get("day_min_price"),
+        "day_max_price": zone.get("day_max_price"),
+        "zone_duration_minutes": zone.get("duration_minutes"),
+        "quarter_count": zone.get("quarter_count"),
+    }
+
+
+def optimal_period_attributes(period: dict[str, Any] | None) -> dict[str, Any]:
+    """Return the shared attribute contract for one optimal period.
+
+    Produced here exactly once so the today sensor and the tomorrow sensor
+    publish the same key set with the same meaning. The matching binary sensor
+    does not use this helper: it deliberately publishes a compact subset of
+    these keys, enough to answer "which window am I in right now". Compact by
+    design: enough to schedule, chart and explain the window, without repeating
+    the day's whole price array on every planner entity.
+    """
+    if period is None:
+        return {}
+    return {
+        "start": _local_iso(period.get("start")),
+        "end": _local_iso(period.get("end")),
+        # Convenience mirror in the ``HH:MM`` style the existing time sensors
+        # use; the state itself is a real timestamp.
+        "start_time": _hhmm(period.get("start")),
+        "end_time": _hhmm(period.get("end")),
+        "duration_minutes": period.get("duration_minutes"),
+        "average_price_eur_kwh": period.get("average_price_eur_kwh"),
+        "min_price_eur_kwh": period.get("min_price_eur_kwh"),
+        "max_price_eur_kwh": period.get("max_price_eur_kwh"),
+        "block_count": period.get("block_count"),
+        "resolution_minutes": period.get("resolution_minutes"),
+    }
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: QuarterPricesConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up the sensor platform from a config entry."""
+    coordinator = entry.runtime_data
+
+    entities: list[SensorEntity] = [
+        QuarterPricesCurrentPriceSensor(coordinator),
+        QuarterPricesCurrentReturnPriceSensor(coordinator),
+        QuarterPricesTodayPricesSensor(coordinator),
+        QuarterPricesTomorrowPricesSensor(coordinator),
+    ]
+
+    for base, day, label, method_name, is_tomorrow in _EXTREMUM_DEFINITIONS:
+        entities.append(
+            QuarterPricesBlockPriceSensor(
+                coordinator,
+                f"{base}_{day}",
+                f"{label} {day}",
+                method_name,
+                is_tomorrow,
+            )
+        )
+        entities.append(
+            QuarterPricesBlockTimeSensor(
+                coordinator,
+                f"{base}_time_{day}",
+                f"{label} time {day}",
+                method_name,
+                is_tomorrow,
+            )
+        )
+
+    entities.extend(
+        QuarterPricesPriceZoneBoundarySensor(
+            coordinator, key, name, method_name, edge, icon
+        )
+        for key, name, method_name, edge, icon in _ZONE_DEFINITIONS
+    )
+
+    # The optimal-period sensors are created only while their feature is
+    # enabled, so a user who never turns it on never gets an entity for it.
+    #
+    # A feature switched off again is simply not re-created; its registry entry
+    # is deliberately left alone (see ``unique_id_for``). Home Assistant then
+    # publishes ``unavailable`` for it, every user customization stays put, and
+    # switching the feature back on reuses the very same registry entry — so the
+    # entity id is identical and no ``_2`` duplicate can appear.
+    enabled = {
+        "cheap": get_optimal_cheap_enabled(entry.options),
+        "expensive": get_optimal_expensive_enabled(entry.options),
+    }
+    for feature, icon, definitions in _OPTIMAL_DEFINITIONS:
+        if enabled[feature]:
+            entities.extend(
+                QuarterPricesOptimalPeriodSensor(
+                    coordinator, key, name, method_name, icon
+                )
+                for key, name, method_name in definitions
+            )
+
+    async_add_entities(entities)
+
+
+class QuarterPricesCurrentPriceSensor(QuarterPricesEntity, SensorEntity):
+    """Sensor exposing the provider's dynamic import price.
+
+    For Frank this is the "marktprijs+" component (market price + VAT + sourcing
+    markup), which Frank bills as "het dynamische deel". For Tibber it is the
+    all-in price (energy + tax), because Tibber does not expose a separate
+    markup. It is the "current electricity price" entity for the Home Assistant
+    Energy Dashboard: monetary device class, EUR/kWh. No ``state_class`` is set:
+    this is an instantaneous price, not a cumulative total. The state stays
+    numeric, or unavailable when no block covers the active quarter. The all-in
+    price also remains reachable on the same entity as
+    ``full_block.total_price_eur_kwh``.
+    """
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_native_unit_of_measurement = PRICE_UNIT_EUR_KWH
+
+    def __init__(self, coordinator: QuarterPricesCoordinator) -> None:
+        """Initialize the current price sensor."""
+        super().__init__(coordinator, "current_price", "Current price")
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the current electricity price."""
+        return (self.coordinator.data or {}).get("current_price")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return time/timestamp/duration and the full active price block."""
+        return _block_attributes(self._current_block())
+
+    def _current_block(self) -> dict[str, Any] | None:
+        """Return the price block matching the current time slot."""
+        return (self.coordinator.data or {}).get("current_price_block")
+
+
+class QuarterPricesCurrentReturnPriceSensor(QuarterPricesEntity, SensorEntity):
+    """Sensor exposing the estimated current electricity feed-in price.
+
+    The value is the verified current market price plus the configured feed-in
+    adjustment (see :mod:`.price`). It reuses the active price block selected by
+    the coordinator and never performs its own API request. Suitable as the
+    "return to grid" current-price entity for the Energy Dashboard.
+
+    Like the purchase-price sensor, it uses the monetary device class and
+    EUR/kWh but no ``state_class`` (an instantaneous price, not a total).
+    """
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_native_unit_of_measurement = PRICE_UNIT_EUR_KWH
+
+    def __init__(self, coordinator: QuarterPricesCoordinator) -> None:
+        """Initialize the current feed-in price sensor."""
+        super().__init__(coordinator, "current_return_price", "Current feed-in price")
+
+    @property
+    def suggested_object_id(self) -> str:
+        """Force the entity id to ``sensor.frank_current_return_price``.
+
+        The friendly name is "Current feed-in price", but the stable entity id
+        uses the neutral "return price" wording that pairs with the Energy
+        Dashboard's "return to grid" option. Home Assistant prepends the device
+        name ("Frank" or "Tibber"), so only the entity-name part is returned
+        here.
+        """
+        return "Current return price"
+
+    def _current_block(self) -> dict[str, Any] | None:
+        """Return the active price block selected by the coordinator."""
+        return (self.coordinator.data or {}).get("current_price_block")
+
+    def _adjustment(self) -> float:
+        """Return the configured feed-in adjustment (default 0.0)."""
+        return get_feed_in_adjustment(self.coordinator.entry.options)
+
+    def _apply_vat(self) -> bool:
+        """Return whether 21% VAT should be applied (default False)."""
+        return get_apply_feed_in_vat(self.coordinator.entry.options)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the estimated current feed-in price, or None if unavailable."""
+        return calculate_feed_in_price(
+            self._current_block(), self._adjustment(), self._apply_vat()
+        )
+
+    @property
+    def available(self) -> bool:
+        """Available only when a feed-in price can be calculated."""
+        if not super().available:
+            return False
+        return self.native_value is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the source field, market price, adjustment, VAT and method."""
+        block = self._current_block()
+        if block is None:
+            return {}
+        apply_vat = self._apply_vat()
+        return {
+            "market_price_source": MARKET_PRICE_FIELD,
+            "market_price": block.get(MARKET_PRICE_FIELD),
+            "feed_in_adjustment": self._adjustment(),
+            "apply_vat": apply_vat,
+            "vat_rate": FEED_IN_VAT_RATE,
+            "calculation_method": calculation_method(block, apply_vat),
+        }
+
+
+class QuarterPricesDayPricesSensor(QuarterPricesEntity, SensorEntity):
+    """Base for the two sensors publishing a whole day's price array.
+
+    The ``prices`` attribute carries the complete daily block array — 92, 96 or
+    100 blocks depending on the day — which serializes to roughly 25 kB. That is
+    well past the Recorder's 16384-byte per-state attribute limit, so on every
+    state change the Recorder logged
+
+        State attributes for sensor.frank_prices_today exceed maximum size of
+        16384 bytes. This can cause database performance issues; Attributes will
+        not be stored
+
+    and then stored *no* attributes at all for that state — the array was never
+    persisted anyway, and the small useful attributes next to it were dropped
+    with it.
+
+    ``_unrecorded_attributes`` is Home Assistant's own mechanism for exactly
+    this: the attribute stays a completely ordinary live state attribute that
+    ``state_attr()``, dashboards, templates and EMS consumers read unchanged,
+    while the Recorder filters it out *before* the size check. What is left is
+    a few hundred bytes of summary, so the warning cannot recur and the small
+    attributes are stored again.
+
+    Only ``prices`` is excluded — everything else keeps its history. The
+    attribute is available since Home Assistant 2023.8, comfortably below the
+    2025.1.0 minimum this integration declares.
+    """
+
+    _unrecorded_attributes = frozenset({"prices"})
+
+    _attr_native_unit_of_measurement = "blocks"
+
+
+class QuarterPricesTodayPricesSensor(QuarterPricesDayPricesSensor):
+    """Sensor exposing the number of price blocks for today."""
+
+    def __init__(self, coordinator: QuarterPricesCoordinator) -> None:
+        """Initialize the prices-today sensor."""
+        super().__init__(coordinator, "prices_today", "Prices today")
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of price blocks for today."""
+        return len((self.coordinator.data or {}).get("today", []))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return today's prices, summary blocks and statistics."""
+        data = self.coordinator.data or {}
+        prices = data.get("today", [])
+        return {
+            "prices": _serialize_prices(prices),
+            "resolution_minutes": data.get("resolution_minutes"),
+            "cheapest_block": _full_block(self.coordinator.get_cheapest_today()),
+            "most_expensive_block": _full_block(
+                self.coordinator.get_most_expensive_today()
+            ),
+            "average_price": self.coordinator.average_price(prices),
+            "min_price": self.coordinator.min_price(prices),
+            "max_price": self.coordinator.max_price(prices),
+        }
+
+
+class QuarterPricesTomorrowPricesSensor(QuarterPricesDayPricesSensor):
+    """Sensor exposing the number of price blocks for tomorrow."""
+
+    def __init__(self, coordinator: QuarterPricesCoordinator) -> None:
+        """Initialize the prices-tomorrow sensor."""
+        super().__init__(coordinator, "prices_tomorrow", "Prices tomorrow")
+
+    @property
+    def available(self) -> bool:
+        """Return availability; unavailable until tomorrow's prices are published."""
+        if not super().available:
+            return False
+        return bool((self.coordinator.data or {}).get("tomorrow_available"))
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of price blocks for tomorrow."""
+        return len((self.coordinator.data or {}).get("tomorrow", []))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return tomorrow's prices, summary blocks and statistics."""
+        data = self.coordinator.data or {}
+        prices = data.get("tomorrow", [])
+        return {
+            "prices": _serialize_prices(prices),
+            "available": bool(data.get("tomorrow_available")),
+            "resolution_minutes": data.get("resolution_minutes"),
+            "cheapest_block": _full_block(self.coordinator.get_cheapest_tomorrow()),
+            "most_expensive_block": _full_block(
+                self.coordinator.get_most_expensive_tomorrow()
+            ),
+            "average_price": self.coordinator.average_price(prices),
+            "min_price": self.coordinator.min_price(prices),
+            "max_price": self.coordinator.max_price(prices),
+            "last_attempt": data.get("last_attempt"),
+        }
+
+
+class QuarterPricesBlockSensorBase(QuarterPricesEntity, SensorEntity):
+    """Base for sensors derived from the cheapest/most expensive day block.
+
+    The block is the single cheapest or most expensive block of the full local
+    day, compared at the raw resolution the provider returns.
+    """
+
+    def __init__(
+        self,
+        coordinator: QuarterPricesCoordinator,
+        key: str,
+        name: str,
+        method_name: str,
+        is_tomorrow: bool,
+    ) -> None:
+        """Initialize the block-based sensor."""
+        super().__init__(coordinator, key, name)
+        self._method_name = method_name
+        self._is_tomorrow = is_tomorrow
+
+    def _block(self) -> dict[str, Any] | None:
+        """Resolve the price block via the coordinator helper method."""
+        getter = getattr(self.coordinator, self._method_name)
+        return getter()
+
+    @property
+    def available(self) -> bool:
+        """Return True only when a price block is available."""
+        if not super().available:
+            return False
+        # Tomorrow-based sensors are unavailable until tomorrow is published.
+        if self._is_tomorrow and not (self.coordinator.data or {}).get(
+            "tomorrow_available"
+        ):
+            return False
+        return self._block() is not None
+
+
+class QuarterPricesBlockPriceSensor(QuarterPricesBlockSensorBase):
+    """Sensor exposing the price of the cheapest/most expensive day block.
+
+    The state is the block's total price in EUR/kWh. The block's local start
+    time and full price breakdown are exposed as attributes.
+    """
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_native_unit_of_measurement = "EUR/kWh"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the total price of the block."""
+        block = self._block()
+        if block is None:
+            return None
+        return block.get("total_price_eur_kwh")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return time, timestamp, end_timestamp, duration and the full block."""
+        return _block_attributes(self._block())
+
+
+class QuarterPricesBlockTimeSensor(QuarterPricesBlockSensorBase):
+    """Sensor exposing the start time of the cheapest/most expensive day block.
+
+    The state is the block's local start time (``HH:MM``). The block's price
+    and full breakdown are exposed as attributes.
+    """
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the block's local start time as ``HH:MM``."""
+        return _hhmm((self._block() or {}).get("from"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return price, timestamp, end_timestamp, duration and the full block."""
+        block = self._block()
+        if block is None:
+            return {}
+        return {
+            "price": block.get("total_price_eur_kwh"),
+            "timestamp": _local_iso(block.get("from")),
+            "end_timestamp": _local_iso(block.get("till")),
+            "duration_minutes": block.get("duration_minutes"),
+            "full_block": _full_block(block),
+        }
+
+
+class QuarterPricesPriceZoneBoundarySensor(QuarterPricesEntity, SensorEntity):
+    """Sensor exposing one boundary of today's cheap or expensive price zone.
+
+    The state is a **timezone-aware datetime** with the ``timestamp`` device
+    class rather than the ``HH:MM`` string the older ``*_time_today`` sensors
+    use. These are new entities with no existing consumers, and a real timestamp
+    is what makes them directly usable in an automation trigger or condition
+    without any parsing or date guessing. The familiar ``HH:MM`` rendering stays
+    available as the ``time`` attribute, so dashboards keep the project's
+    existing look.
+
+    The zone itself is derived once per coordinator update; this entity only
+    reads that shared result and never performs its own search or request.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(
+        self,
+        coordinator: QuarterPricesCoordinator,
+        key: str,
+        name: str,
+        method_name: str,
+        edge: str,
+        icon: str,
+    ) -> None:
+        """Initialize the zone-boundary sensor."""
+        super().__init__(coordinator, key, name)
+        self._method_name = method_name
+        self._edge = edge
+        self._attr_icon = icon
+
+    def _zone(self) -> dict[str, Any] | None:
+        """Return the shared zone this sensor describes."""
+        return getattr(self.coordinator, self._method_name)()
+
+    @property
+    def available(self) -> bool:
+        """Available only while today's data yields a zone.
+
+        Without a zone the entity goes unavailable rather than keeping the
+        previous day's boundary, so a stale time can never be published.
+        """
+        if not super().available:
+            return False
+        return self._zone() is not None
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the zone boundary as an aware datetime."""
+        zone = self._zone()
+        if zone is None:
+            return None
+        value = zone.get(self._edge)
+        return value if isinstance(value, datetime) else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the shared price-zone attribute contract."""
+        return zone_attributes(self._zone(), self._edge)
+
+
+class QuarterPricesOptimalPeriodSensor(QuarterPricesEntity, SensorEntity):
+    """Sensor exposing one optimal cheap/expensive period.
+
+    The state is the period's **start**, as a timezone-aware datetime with the
+    ``timestamp`` device class — the same contract the v0.1.6 zone-boundary
+    sensors already established, and the reason is the same: a period is a
+    *when*, and a real timestamp is directly usable in an automation trigger or
+    a ``> now()`` condition without any parsing or date guessing. Publishing the
+    average price as the state instead would put a number in front of the user
+    that no scheduler can act on and would need the timestamps in attributes
+    anyway; here the price rides along as ``average_price_eur_kwh`` instead,
+    which costs nothing and keeps one consistent contract across cheap and
+    expensive, today and tomorrow.
+
+    The period is derived once per coordinator update; this entity only reads
+    that shared result and never performs its own search or request. Its
+    attributes are deliberately compact — the full daily array lives on
+    ``sensor.frank_prices_today``/``_tomorrow`` and is not duplicated here.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(
+        self,
+        coordinator: QuarterPricesCoordinator,
+        key: str,
+        name: str,
+        method_name: str,
+        icon: str,
+    ) -> None:
+        """Initialize the optimal-period sensor."""
+        super().__init__(coordinator, key, name)
+        self._method_name = method_name
+        self._attr_icon = icon
+
+    def _period(self) -> dict[str, Any] | None:
+        """Return the shared period this sensor describes."""
+        return getattr(self.coordinator, self._method_name)()
+
+    @property
+    def available(self) -> bool:
+        """Available only while a period for that day can be derived.
+
+        Without a complete market day, or with a duration the day cannot
+        compose out of whole blocks, the entity goes unavailable rather than
+        publishing a window that is not really the optimum.
+        """
+        if not super().available:
+            return False
+        return self._period() is not None
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the period's start as an aware datetime."""
+        period = self._period()
+        if period is None:
+            return None
+        value = period.get("start")
+        return value if isinstance(value, datetime) else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the shared optimal-period attribute contract."""
+        return optimal_period_attributes(self._period())

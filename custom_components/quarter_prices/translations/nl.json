@@ -1,0 +1,129 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Quarter Prices",
+        "description": "Kies de prijsbron. Elke bron krijgt een eigen apparaat en een eigen set entiteiten, dus je kunt er meer dan één toevoegen.",
+        "data": {
+          "provider": "Energieleverancier"
+        },
+        "data_description": {
+          "provider": "Frank Energie leest de openbare Frank-marktprijzen voor Nederland of België en heeft geen account nodig. Tibber leest de prijzen van jouw eigen Tibber-woning en heeft een persoonlijk toegangstoken nodig. Overige aanbieder (EPEX) gebruikt epexprijzen.nl/.be voor de gepubliceerde all-in dynamische tarieven van veel Nederlandse en Belgische aanbieders, met keuze tussen kwartier- en uurprijzen."
+        }
+      },
+      "frank": {
+        "title": "Frank Energie",
+        "description": "Kies het land voor de marktprijzen van Frank Energie. Er is geen account of authenticatie nodig.",
+        "data": {
+          "country": "Land"
+        }
+      },
+      "tibber": {
+        "title": "Tibber",
+        "description": "Vul een persoonlijk toegangstoken van Tibber in. Maak er een aan op https://developer.tibber.com/ onder *Personal access tokens*. Het token wordt alleen in dit configuratie-item opgeslagen en nooit in diagnostische gegevens getoond.",
+        "data": {
+          "access_token": "Toegangstoken"
+        },
+        "data_description": {
+          "access_token": "Het token van developer.tibber.com, beginnend met `tibber_pat_`. Het moet horen bij het account met het stroomcontract."
+        }
+      },
+      "tibber_home": {
+        "title": "Tibber",
+        "description": "Dit Tibber-account heeft meer dan één woning. Kies de woning waarvan de prijzen gepubliceerd moeten worden.",
+        "data": {
+          "home_id": "Woning"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Tibber opnieuw verifiëren",
+        "description": "Tibber accepteert het opgeslagen toegangstoken voor {home_name} niet meer. Vul een nieuw persoonlijk toegangstoken in om de bestaande entiteiten en instellingen te behouden.",
+        "data": {
+          "access_token": "Toegangstoken"
+        }
+      },
+      "epex_market": {
+        "title": "Overige aanbieder (EPEX)",
+        "description": "Kies de markt. epexprijzen.nl dekt Nederlandse aanbieders; epexprijzen.be dekt Belgische aanbieders per gewest. Deze bron heeft geen account nodig.",
+        "data": {
+          "market": "Markt"
+        },
+        "data_description": {
+          "market": "Nederland of België. De markt bepaalt welke aanbiederslijst wordt geladen, de tijdzone van de prijsdag en de geldende belastingen."
+        }
+      },
+      "epex_region": {
+        "title": "Belgisch gewest",
+        "description": "Kies het gewest waarvan het tarief en de gewestelijke heffingen gelden. Zowel de aanbiederslijst als de prijzen volgen deze keuze.",
+        "data": {
+          "region": "Gewest"
+        },
+        "data_description": {
+          "region": "Vlaanderen, Brussel of Wallonië. Aanbieders zonder geverifieerd dynamisch tarief in dit gewest worden niet getoond."
+        }
+      },
+      "epex_provider": {
+        "title": "Aanbieder en resolutie",
+        "description": "Kies de aanbieder en of je kwartierprijzen (15 min) of uurprijzen (60 min) wilt. De aanbiederslijst wordt live van epexprijzen geladen.",
+        "data": {
+          "epex_provider_id": "Aanbieder",
+          "resolution": "Prijzen per"
+        },
+        "data_description": {
+          "epex_provider_id": "De aanbieder wiens gepubliceerde all-in dynamische tarief gebruikt moet worden. Benoemde productvarianten staan als aparte vermeldingen wanneer de site die kent.",
+          "resolution": "Kwartierprijzen geven 96 prijzen per dag; uurprijzen 24. Je kunt dit later in de integratie-opties wijzigen."
+        }
+      }
+    },
+    "error": {
+      "invalid_token": "Vul een persoonlijk toegangstoken van Tibber in.",
+      "invalid_auth": "Tibber heeft dit toegangstoken geweigerd. Maak een nieuw token aan op https://developer.tibber.com/ en probeer het opnieuw.",
+      "cannot_connect": "De Tibber-API is niet bereikbaar. Controleer je internetverbinding en probeer het opnieuw.",
+      "unknown": "Onverwachte fout. Bekijk het Home Assistant-logboek voor details.",
+      "no_homes": "Dit Tibber-account heeft geen woningen. Er is een Tibber-stroomcontract nodig om prijzen te lezen.",
+      "no_price_info": "Deze Tibber-woning heeft geen prijsinformatie. Controleer of de woning een actief stroomcontract heeft.",
+      "unsupported_currency": "De prijzen van deze Tibber-woning zijn niet in euro. Quarter Prices ondersteunt momenteel alleen EUR-markten (Nederland, België en Duitsland).",
+      "wrong_account": "Dit token hoort bij een ander Tibber-account of een andere woning. Gebruik een token voor dezelfde woning als deze integratie.",
+      "no_providers": "epexprijzen gaf geen aanbieders voor deze markt en dit gewest. Probeer een ander gewest of een andere markt.",
+      "invalid_provider": "Kies een aanbieder uit de lijst.",
+      "invalid_resolution": "Kies kwartier- of uurprijzen."
+    },
+    "abort": {
+      "already_configured": "Deze leverancier en dit account zijn al geconfigureerd.",
+      "reauth_successful": "Opnieuw verifiëren is gelukt.",
+      "reauth_not_supported": "Alleen Tibber-items hoeven opnieuw te worden geverifieerd."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Quarter Prices",
+        "data": {
+          "feed_in_adjustment": "Teruglevercorrectie",
+          "apply_feed_in_vat": "21% btw toepassen op terugleverprijs",
+          "cheap_zone_margin_percent": "Marge goedkope prijszone",
+          "expensive_zone_margin_percent": "Marge dure prijszone",
+          "optimal_cheap_enabled": "Optimale goedkope periode inschakelen",
+          "optimal_cheap_duration_minutes": "Duur optimale goedkope periode",
+          "optimal_expensive_enabled": "Optimale dure periode inschakelen",
+          "optimal_expensive_duration_minutes": "Duur optimale dure periode",
+          "resolution": "Prijzen per"
+        },
+        "data_description": {
+          "feed_in_adjustment": "Het bedrag in EUR/kWh dat bij de actuele spotprijs wordt opgeteld om de geschatte terugleverprijs te berekenen. De spotprijs is de ruwe marktprijs zonder btw, energiebelasting of inkoopvergoeding (de marktprijs van Frank, `energy` van Tibber). Gebruik een positieve waarde voor een extra vergoeding, een negatieve waarde voor een inhouding of terugleververgoeding, of nul om de spotprijs ongewijzigd te gebruiken. Contractvoorwaarden kunnen verschillen; controleer dit in je eigen energiecontract of afrekening.",
+          "apply_feed_in_vat": "Schakel dit in wanneer de terugleververgoeding inclusief 21% btw moet worden berekend. De btw wordt toegepast op de spotprijs plus de ingestelde teruglevercorrectie. Laat dit uitgeschakeld wanneer jouw vergoeding exclusief btw wordt berekend. Deze optie is een handmatige keuze; hij wordt niet uit de gegevens van de leverancier gelezen.",
+          "cheap_zone_margin_percent": "Het percentage van het totale prijsverschil van de dag, gerekend vanaf het goedkoopste kwartier, dat nog als goedkoop wordt beschouwd. De langste aaneengesloten reeks kwartieren binnen die grens vormt de goedkope prijszone. Standaard 15%, maximaal 49%.",
+          "expensive_zone_margin_percent": "Het percentage van het totale prijsverschil van de dag, gerekend vanaf het duurste kwartier, dat nog als duur wordt beschouwd. De langste aaneengesloten reeks kwartieren binnen die grens vormt de dure prijszone. Standaard 15%, maximaal 49%.",
+          "optimal_cheap_enabled": "Zoekt de goedkoopste aaneengesloten periode van precies de hieronder ingestelde duur, voor vandaag en voor morgen. Dit staat volledig los van de goedkope prijszone: er wordt alleen gekeken naar de werkelijke prijzen en de gekozen duur, nooit naar de zonemarge. Zolang deze optie nooit is ingeschakeld, worden de bijbehorende entiteiten niet aangemaakt. Schakel je hem later weer uit, dan blijven eerder aangemaakte entiteiten bestaan als onbeschikbaar, zodat entity-ID's en aanpassingen behouden blijven.",
+          "optimal_cheap_duration_minutes": "De exacte lengte van de goedkoopste periode, in minuten. Van 15 tot 720 minuten in stappen van 15. Alleen van toepassing wanneer de optimale goedkope periode hierboven is ingeschakeld. De periode is altijd exact deze lengte en aaneengesloten; past de duur niet op de blokken van de dag (bijvoorbeeld 90 minuten op een dag met uurprijzen), dan blijft het resultaat onbeschikbaar in plaats van dat er blokken worden opgeknipt.",
+          "optimal_expensive_enabled": "Zoekt de duurste aaneengesloten periode van precies de hieronder ingestelde duur, voor vandaag en voor morgen. Handig om verbruik te vermijden of juist terug te leveren. Dit staat volledig los van de dure prijszone: er wordt alleen gekeken naar de werkelijke prijzen en de gekozen duur, nooit naar de zonemarge. Zolang deze optie nooit is ingeschakeld, worden de bijbehorende entiteiten niet aangemaakt. Schakel je hem later weer uit, dan blijven eerder aangemaakte entiteiten bestaan als onbeschikbaar, zodat entity-ID's en aanpassingen behouden blijven.",
+          "optimal_expensive_duration_minutes": "De exacte lengte van de duurste periode, in minuten. Van 15 tot 720 minuten in stappen van 15. Alleen van toepassing wanneer de optimale dure periode hierboven is ingeschakeld.",
+          "resolution": "Kies kwartierprijzen (15 min) of uurprijzen (60 min). Geldt alleen voor 'Overige aanbieder (EPEX)'-items. Wijzigen herlaadt de integratie; bij uurprijzen blijven de optimale periodes met 15-minutenduur onbeschikbaar."
+        }
+      }
+    },
+    "error": {
+      "invalid_duration": "Vul een heel aantal minuten in tussen 15 en 720, in stappen van 15 (bijvoorbeeld 60, 120 of 180)."
+    }
+  }
+}

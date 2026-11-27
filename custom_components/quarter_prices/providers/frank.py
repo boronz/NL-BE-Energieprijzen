@@ -1,0 +1,282 @@
+"""Frank Energie price provider.
+
+This is the original, unauthenticated Frank Energie integration code, moved
+behind the provider interface. It talks to the public Frank Energie GraphQL
+endpoint, which does not require authentication for market prices, and
+normalizes the quarter-hourly electricity prices into the shared block shape.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import date as date_type
+from datetime import datetime
+from typing import Any
+
+import aiohttp
+from aiohttp import ClientError
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import dt as dt_util
+
+from ..const import (
+    COUNTRY_NL,
+    DEFAULT_COUNTRY,
+    MAX_RETRIES,
+    REQUEST_TIMEOUT,
+    SUPPORTED_COUNTRIES,
+)
+from ..market_time import market_timezone
+from .base import (
+    PriceProvider,
+    ProviderConnectionError,
+    ProviderError,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+# Frank Energie GraphQL API.
+GRAPHQL_ENDPOINT = "https://graphql.frankenergie.nl/"
+
+# Price resolution requested from the API.
+#
+# ``PT15M`` returns native quarter-hourly prices (96 blocks/day); ``PT60M``
+# returns hourly prices (24 blocks/day). The public ``marketPrices`` query
+# accepts this ``PriceResolution`` argument without authentication, so we always
+# request quarter-hour data. When Frank has no quarter-hour data for a day it
+# transparently returns the hourly blocks instead.
+PRICE_RESOLUTION = "PT15M"
+
+# GraphQL query for the market prices on a given date at a chosen resolution.
+#
+# NOTE: the ``resolution: PriceResolution!`` argument is required to get native
+# quarter-hour data. Without it (the legacy form) the API only returns hourly
+# (60-minute) blocks. ``marketPricesElectricity(startDate, endDate)`` likewise
+# only returns hourly data and must NOT be used.
+MARKET_PRICES_QUERY = """
+query MarketPrices($date: String!, $resolution: PriceResolution!) {
+  marketPrices(date: $date, resolution: $resolution) {
+    electricityPrices {
+      from
+      till
+      resolution
+      marketPrice
+      marketPriceTax
+      sourcingMarkupPrice
+      energyTaxPrice
+      perUnit
+    }
+  }
+}
+"""
+
+# Delay (seconds) between retry attempts.
+RETRY_BACKOFF = 2
+
+
+class FrankProvider(PriceProvider):
+    """Frank Energie implementation of :class:`PriceProvider`."""
+
+    provider_id = "frank"
+    provider_name = "Frank Energie"
+    device_name = "Frank"
+    manufacturer = "Jouw Cloud B.V."
+    model = "Frank Energie Market Prices"
+    requires_auth = False
+
+    def __init__(self, hass, entry) -> None:
+        """Initialize the provider."""
+        super().__init__(hass, entry)
+        country = entry.data.get("country", DEFAULT_COUNTRY)
+        self._country = country if country in SUPPORTED_COUNTRIES else DEFAULT_COUNTRY
+        self._session = async_get_clientsession(hass)
+
+    @property
+    def country(self) -> str:
+        """Return the configured Frank market country."""
+        return self._country
+
+    @property
+    def time_zone(self):
+        """Return the Frank market's timezone."""
+        return market_timezone(self._country)
+
+    async def async_get_prices_for_date(self, target_date: date_type) -> dict[str, Any]:
+        """Fetch and normalize the quarter-hourly prices for a given date.
+
+        Returns a dict of the shape ``{"prices": [...]}`` where each price entry
+        is normalized. Invalid records are skipped and logged.
+        """
+        payload = {
+            "query": MARKET_PRICES_QUERY,
+            "variables": {
+                "date": target_date.isoformat(),
+                "resolution": PRICE_RESOLUTION,
+            },
+            "operationName": "MarketPrices",
+        }
+
+        data = await self._async_request(payload)
+        raw_prices = self._extract_electricity_prices(data)
+
+        prices: list[dict[str, Any]] = []
+        for record in raw_prices:
+            normalized = self._normalize_record(record)
+            if normalized is not None:
+                prices.append(normalized)
+
+        self._log_price_summary(target_date, prices)
+
+        return {"prices": prices}
+
+    @staticmethod
+    def _log_price_summary(
+        target_date: date_type, prices: list[dict[str, Any]]
+    ) -> None:
+        """Emit a debug summary: block count, first/last block and resolution."""
+        if not _LOGGER.isEnabledFor(logging.DEBUG):
+            return
+
+        count = len(prices)
+        if count == 0:
+            _LOGGER.debug("Fetched 0 price blocks for %s", target_date.isoformat())
+            return
+
+        first = prices[0]
+        last = prices[-1]
+        # Detect resolution from the first block's duration.
+        duration = first.get("duration_minutes")
+        resolution = 60 if isinstance(duration, int) and duration >= 60 else 15
+        _LOGGER.debug(
+            "Fetched %d price blocks for %s (resolution=%d min): "
+            "first=%s->%s last=%s->%s",
+            count,
+            target_date.isoformat(),
+            resolution,
+            first.get("from"),
+            first.get("till"),
+            last.get("from"),
+            last.get("till"),
+        )
+
+    async def _async_request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Perform the GraphQL request with timeout and retries."""
+        headers = {"Content-Type": "application/json"}
+        # NL is the default; only send the x-country header for other countries.
+        if self._country != COUNTRY_NL:
+            headers["x-country"] = self._country
+
+        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        last_error: Exception | None = None
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                async with self._session.post(
+                    GRAPHQL_ENDPOINT,
+                    json=payload,
+                    headers=headers,
+                    timeout=timeout,
+                ) as response:
+                    response.raise_for_status()
+                    data: dict[str, Any] = await response.json()
+
+                if errors := data.get("errors"):
+                    raise ProviderError(f"GraphQL errors: {errors}")
+
+                return data
+            except (TimeoutError, ClientError) as err:
+                last_error = err
+                _LOGGER.warning(
+                    "Frank API request failed (attempt %d/%d): %s",
+                    attempt,
+                    MAX_RETRIES,
+                    err,
+                )
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(RETRY_BACKOFF * attempt)
+
+        _LOGGER.error(
+            "Frank API request failed after %d attempts: %s", MAX_RETRIES, last_error
+        )
+        raise ProviderConnectionError(
+            f"Failed to fetch data after {MAX_RETRIES} attempts"
+        ) from last_error
+
+    @staticmethod
+    def _extract_electricity_prices(data: dict[str, Any]) -> list[dict[str, Any]]:
+        """Safely extract the electricity prices list from the response."""
+        market_prices = (data.get("data") or {}).get("marketPrices") or {}
+        electricity_prices = market_prices.get("electricityPrices")
+        if not isinstance(electricity_prices, list):
+            _LOGGER.warning("No electricityPrices list found in response")
+            return []
+        return electricity_prices
+
+    @staticmethod
+    def _normalize_record(record: Any) -> dict[str, Any] | None:
+        """Validate and normalize a single price record.
+
+        Returns ``None`` when the record is invalid so the caller can skip it.
+        """
+        if not isinstance(record, dict):
+            _LOGGER.debug("Skipping non-dict price record: %r", record)
+            return None
+
+        try:
+            from_dt = FrankProvider._parse_datetime(record.get("from"))
+            till_dt = FrankProvider._parse_datetime(record.get("till"))
+
+            market_price = float(record["marketPrice"])
+            market_price_tax = float(record["marketPriceTax"])
+            sourcing_markup_price = float(record["sourcingMarkupPrice"])
+            energy_tax_price = float(record["energyTaxPrice"])
+
+            per_unit = record.get("perUnit")
+            if not isinstance(per_unit, str) or not per_unit:
+                raise ValueError(f"Invalid perUnit: {per_unit!r}")
+        except (KeyError, TypeError, ValueError) as err:
+            _LOGGER.warning("Skipping invalid price record %r: %s", record, err)
+            return None
+
+        if from_dt is None or till_dt is None or till_dt <= from_dt:
+            _LOGGER.warning(
+                "Skipping price record with invalid interval: from=%s till=%s",
+                record.get("from"),
+                record.get("till"),
+            )
+            return None
+
+        # Absolute instants: subtracting two datetimes that share one tzinfo
+        # object is a naive wall-clock subtraction, which reports 75 minutes for
+        # the 15-minute block that straddles the spring-forward gap.
+        duration_minutes = int(
+            (dt_util.as_utc(till_dt) - dt_util.as_utc(from_dt)).total_seconds() // 60
+        )
+        total_price = (
+            market_price + market_price_tax + sourcing_markup_price + energy_tax_price
+        )
+
+        return {
+            "from": from_dt,
+            "till": till_dt,
+            "duration_minutes": duration_minutes,
+            "market_price": market_price,
+            "market_price_tax": market_price_tax,
+            "sourcing_markup_price": sourcing_markup_price,
+            "energy_tax_price": energy_tax_price,
+            "total_price_eur_kwh": round(total_price, 6),
+            "per_unit": per_unit,
+        }
+
+    @staticmethod
+    def _parse_datetime(value: Any) -> datetime | None:
+        """Parse an ISO 8601 datetime string into a local timezone-aware datetime."""
+        if not isinstance(value, str) or not value:
+            return None
+        parsed = dt_util.parse_datetime(value)
+        if parsed is None:
+            return None
+        # Ensure the datetime is timezone-aware, then convert to HA local time.
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt_util.UTC)
+        return dt_util.as_local(parsed)

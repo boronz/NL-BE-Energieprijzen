@@ -1,0 +1,80 @@
+# Quarter Prices — ApexCharts "today" chart
+#
+# Renders every price block from sensor.tibber_prices_today individually using
+# the block's `from` timestamp and `total_price_eur_kwh` value. When the provider
+# returns native quarter-hour data you get 96 bars; when only hourly data is
+# available you get 24 bars. The data is NEVER aggregated.
+#
+# Required HACS frontend cards:
+#   - apexcharts-card        (RomRider/apexcharts-card)
+#   - config-template-card   (iantrich/config-template-card)
+#
+# Optional helper entities for the color thresholds (input_number):
+#   input_number.quarter_prices_green_threshold  (defaults to 0.12 if missing)
+#   input_number.quarter_prices_red_threshold    (defaults to 0.25 if missing)
+# This example uses a Tibber entry. For a Frank entry, replace `tibber`
+# with `frank` in every entity id below.
+type: custom:config-template-card
+variables:
+  GREEN: "states['input_number.quarter_prices_green_threshold'] ? states['input_number.quarter_prices_green_threshold'].state : 0.12"
+  RED: "states['input_number.quarter_prices_red_threshold'] ? states['input_number.quarter_prices_red_threshold'].state : 0.25"
+entities:
+  - sensor.tibber_prices_today
+card:
+  type: custom:apexcharts-card
+  graph_span: 24h
+  span:
+    start: day
+  now:
+    show: true
+    label: Now
+  experimental:
+    color_threshold: true
+  header:
+    show: true
+    title: Electricity price today (€/kWh)
+  apex_config:
+    chart:
+      height: 320
+    legend:
+      show: false
+    # No `min` is set on purpose: Prices can go negative, and pinning the
+    # axis to 0 would clamp those bars out of sight. ApexCharts scales to the
+    # data, so a negative hour is drawn below the zero line where it belongs.
+    yaxis:
+      decimalsInFloat: 3
+      labels:
+        formatter: |
+          EVAL:function(val){ return "€ " + val.toFixed(3); }
+    tooltip:
+      x:
+        format: dd MMM HH:mm
+      "y":
+        formatter: |
+          EVAL:function(val){ return "€ " + val.toFixed(3) + " /kWh"; }
+    dataLabels:
+      enabled: false
+    plotOptions:
+      bar:
+        columnWidth: 70%
+        borderRadius: 2
+  series:
+    - entity: sensor.tibber_prices_today
+      name: Price
+      type: column
+      stroke_width: 0
+      float_precision: 5
+      color_threshold:
+        - value: 0
+          color: "#43a047"
+        - value: ${Number(GREEN)}
+          color: "#ffa600"
+        - value: ${Number(RED)}
+          color: "#db4437"
+      data_generator: |
+        return (entity.attributes.prices || [])
+          .filter(r => r && r.from && r.total_price_eur_kwh !== null && r.total_price_eur_kwh !== undefined)
+          .map(r => {
+            const p = Number(String(r.total_price_eur_kwh).replace(',', '.'));
+            return [new Date(r.from), isNaN(p) ? null : p];
+          });

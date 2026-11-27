@@ -1,0 +1,147 @@
+# ---------------------------------------------------------------------------
+# Quarter Prices — local development files
+#
+# Everything a user or HACS needs is tracked:
+#   custom_components/quarter_prices/  (the integration)
+#   tests/, examples/, README, LICENSE, CHANGELOG, hacs.json, pytest.ini,
+#   requirements-test.txt and .github/workflows/
+#
+# The entries below are machine-specific, generated, secret or temporary and
+# must not be published with the integration.
+# ---------------------------------------------------------------------------
+
+# --- Python bytecode and native build output -------------------------------
+__pycache__/
+*.py[codz]
+*$py.class
+*.so
+*.pyd
+*.dll
+*.dylib
+*.egg
+
+# --- Build / packaging artefacts -------------------------------------------
+build/
+dist/
+sdist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+MANIFEST
+
+# Release archives built locally; HACS creates its own from the repository.
+/*.zip
+/*.tar.gz
+
+# --- Virtual environments and dependency-manager state ---------------------
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.uv-cache/
+.uv-python/
+.cache/
+.direnv/
+.envrc
+.python-version
+.pdm-python
+.pixi/
+__pypackages__/
+
+# --- Test and coverage output ----------------------------------------------
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+junit*.xml
+.hypothesis/
+*.cover
+.ipynb_checkpoints/
+
+# --- Lint and type-checker caches ------------------------------------------
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.dmypy.json
+dmypy.json
+
+# --- Local AI / agent working files ----------------------------------------
+.local-ai/
+.dsh/
+.claude/
+.cursor/
+.continue/
+.aider*
+
+# --- Editors and IDEs -------------------------------------------------------
+.idea/
+.vscode/
+*.code-workspace
+.fleet/
+*.swp
+*.swo
+*~
+
+# --- Operating-system noise -------------------------------------------------
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+
+# --- Secrets and credentials -------------------------------------------------
+# Never commit a Tibber personal access token, API key or private key.
+# Home Assistant stores integration credentials in .storage/ (ignored below).
+.env
+.env.*
+!.env.example
+secrets.yaml
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+id_rsa*
+id_ed25519*
+
+# --- Logs and temporary files ----------------------------------------------
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.pid
+*.prof
+
+# --- Home Assistant runtime ---------------------------------------------------
+# Relevant when this repository is cloned into (or next to) a Home Assistant
+# configuration directory. None of this belongs to the integration.
+.storage/
+deps/
+tts/
+backups/
+.homeassistant/
+/config/
+configuration.yaml
+automations.yaml
+scripts.yaml
+scenes.yaml
+groups.yaml
+customize.yaml
+ui-lovelace.yaml
+home-assistant.log*
+home-assistant_v2.db*
+*.db-journal
+*.db-wal
+*.db-shm
+
+# --- Local scratch space ------------------------------------------------------
+/tmp/
+/scratch/
+/notes/

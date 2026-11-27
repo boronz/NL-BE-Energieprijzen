@@ -1,0 +1,129 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Quarter Prices",
+        "description": "Choose the price source. Each source creates its own device and its own set of entities, so you can add more than one.",
+        "data": {
+          "provider": "Energy provider"
+        },
+        "data_description": {
+          "provider": "Frank Energie reads the public Frank market prices for the Netherlands or Belgium and needs no account. Tibber reads your own Tibber home's prices and needs a personal access token. Other provider (EPEX) uses epexprijzen.nl/.be to offer the published all-in dynamic tariffs of many Dutch and Belgian providers, with a choice of quarter-hourly or hourly prices."
+        }
+      },
+      "frank": {
+        "title": "Frank Energie",
+        "description": "Select the country for Frank Energie market prices. No account or authentication is required.",
+        "data": {
+          "country": "Country"
+        }
+      },
+      "tibber": {
+        "title": "Tibber",
+        "description": "Enter a Tibber personal access token. Create one at https://developer.tibber.com/ under *Personal access tokens*. The token is stored in this config entry only and is never shown in diagnostics.",
+        "data": {
+          "access_token": "Access token"
+        },
+        "data_description": {
+          "access_token": "The token from developer.tibber.com, starting with `tibber_pat_`. It must belong to the account that has the power subscription."
+        }
+      },
+      "tibber_home": {
+        "title": "Tibber",
+        "description": "This Tibber account has more than one home. Select the home whose prices should be published.",
+        "data": {
+          "home_id": "Home"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Tibber",
+        "description": "Tibber no longer accepts the stored access token for {home_name}. Enter a new personal access token to keep the existing entities and settings.",
+        "data": {
+          "access_token": "Access token"
+        }
+      },
+      "epex_market": {
+        "title": "Other provider (EPEX)",
+        "description": "Choose the market. epexprijzen.nl covers Dutch providers; epexprijzen.be covers Belgian providers by region. This source needs no account.",
+        "data": {
+          "market": "Market"
+        },
+        "data_description": {
+          "market": "The Netherlands or Belgium. The market determines which provider list is loaded, the timezone of the price day and the applicable taxes."
+        }
+      },
+      "epex_region": {
+        "title": "Belgian region",
+        "description": "Choose the region whose tariff and regional levies apply. Both the provider list and the prices follow this choice.",
+        "data": {
+          "region": "Region"
+        },
+        "data_description": {
+          "region": "Flanders, Brussels or Wallonia. Providers that do not offer a verified dynamic tariff in this region are not shown."
+        }
+      },
+      "epex_provider": {
+        "title": "Provider and resolution",
+        "description": "Choose the provider and whether you want quarter-hourly (15 min) or hourly (60 min) prices. The provider list is loaded live from epexprijzen.",
+        "data": {
+          "epex_provider_id": "Provider",
+          "resolution": "Price resolution"
+        },
+        "data_description": {
+          "epex_provider_id": "The provider whose published all-in dynamic tariff should be used. Named product variants appear as separate entries when the site models them.",
+          "resolution": "Quarter-hourly returns 96 prices per day; hourly returns 24. You can change this later in the integration options."
+        }
+      }
+    },
+    "error": {
+      "invalid_token": "Enter a Tibber personal access token.",
+      "invalid_auth": "Tibber rejected this access token. Create a new token at https://developer.tibber.com/ and try again.",
+      "cannot_connect": "Could not reach the Tibber API. Check your internet connection and try again.",
+      "unknown": "Unexpected error. Check the Home Assistant log for details.",
+      "no_homes": "This Tibber account has no homes. A Tibber power subscription is required to read prices.",
+      "no_price_info": "This Tibber home has no price information. Check that the home has an active power subscription.",
+      "unsupported_currency": "This Tibber home's prices are not in euro. Quarter Prices currently supports EUR markets only (Netherlands, Belgium and Germany).",
+      "wrong_account": "This token belongs to a different Tibber account or home. Use a token for the same home as this integration.",
+      "no_providers": "epexprijzen returned no providers for this market and region. Try another region or market.",
+      "invalid_provider": "Select a provider from the list.",
+      "invalid_resolution": "Select quarter-hourly or hourly prices."
+    },
+    "abort": {
+      "already_configured": "This provider and account are already configured.",
+      "reauth_successful": "Reauthentication was successful.",
+      "reauth_not_supported": "Only Tibber entries need reauthentication."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Quarter Prices",
+        "data": {
+          "feed_in_adjustment": "Feed-in adjustment",
+          "apply_feed_in_vat": "Apply 21% VAT to feed-in price",
+          "cheap_zone_margin_percent": "Cheap price-zone margin",
+          "expensive_zone_margin_percent": "Expensive price-zone margin",
+          "optimal_cheap_enabled": "Enable optimal cheap period",
+          "optimal_cheap_duration_minutes": "Optimal cheap period duration",
+          "optimal_expensive_enabled": "Enable optimal expensive period",
+          "optimal_expensive_duration_minutes": "Optimal expensive period duration",
+          "resolution": "Price resolution"
+        },
+        "data_description": {
+          "feed_in_adjustment": "The amount in EUR/kWh added to the current spot price to calculate the estimated feed-in price. The spot price is the raw market price without VAT, energy tax or supplier markup (Frank's market price, Tibber's `energy`). Use a positive value for extra compensation, a negative value for a deduction or feed-in fee, or zero to use the spot price unchanged. Contract conditions may differ; verify this against your own energy contract or statement.",
+          "apply_feed_in_vat": "Enable this when the feed-in compensation should be calculated including 21% VAT. VAT is applied to the spot price plus the configured feed-in adjustment. Leave this disabled when your compensation is calculated excluding VAT. This option is a manual choice; it is not read from the provider.",
+          "cheap_zone_margin_percent": "The percentage of the day's total price range, measured upward from the cheapest quarter, that is still considered cheap. The longest contiguous run of quarters within that limit forms the cheap price zone. Default 15%, maximum 49%.",
+          "expensive_zone_margin_percent": "The percentage of the day's total price range, measured downward from the most expensive quarter, that is still considered expensive. The longest contiguous run of quarters within that limit forms the expensive price zone. Default 15%, maximum 49%.",
+          "optimal_cheap_enabled": "Finds the cheapest contiguous period of exactly the duration set below, for today and for tomorrow. Completely separate from the cheap price zone: only the actual prices and the chosen duration are used, never the zone margin. While this option has never been switched on, the matching entities are not created at all. Switch it off again later and entities created earlier remain as unavailable, so entity IDs and customizations are preserved.",
+          "optimal_cheap_duration_minutes": "The exact length of the cheapest period, in minutes. From 15 to 720 minutes in steps of 15. Only applies while the optimal cheap period above is enabled. The period is always exactly this long and contiguous; if the duration does not fit the day's blocks (90 minutes on an hourly-price day, for instance) the result stays unavailable rather than splitting a price block.",
+          "optimal_expensive_enabled": "Finds the most expensive contiguous period of exactly the duration set below, for today and for tomorrow. Useful for avoiding consumption or for planning export. Completely separate from the expensive price zone: only the actual prices and the chosen duration are used, never the zone margin. While this option has never been switched on, the matching entities are not created at all. Switch it off again later and entities created earlier remain as unavailable, so entity IDs and customizations are preserved.",
+          "optimal_expensive_duration_minutes": "The exact length of the most expensive period, in minutes. From 15 to 720 minutes in steps of 15. Only applies while the optimal expensive period above is enabled.",
+          "resolution": "Choose quarter-hourly (15 min) or hourly (60 min) prices. Only applies to 'Other provider (EPEX)' entries. Changing it reloads the integration; hourly data leaves the 15-minute optimal-period durations unavailable."
+        }
+      }
+    },
+    "error": {
+      "invalid_duration": "Enter a whole number of minutes between 15 and 720, in steps of 15 (for example 60, 120 or 180)."
+    }
+  }
+}
