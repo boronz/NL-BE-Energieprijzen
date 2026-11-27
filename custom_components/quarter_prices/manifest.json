@@ -2,13 +2,13 @@
   "domain": "quarter_prices",
   "name": "Quarter Prices",
   "codeowners": [
-    "@Bennie-JC"
+    "@boronz"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/Bennie-JC/ha-frank-quarter-prices",
+  "documentation": "https://github.com/boronz/NL-BE-Energieprijzen",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/Bennie-JC/ha-frank-quarter-prices/issues",
+  "issue_tracker": "https://github.com/boronz/NL-BE-Energieprijzen/issues",
   "requirements": [],
-  "version": "0.2.0"
+  "version": "0.2.1"
 }

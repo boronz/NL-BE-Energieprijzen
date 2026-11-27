@@ -7,6 +7,25 @@ This project is a provider-agnostic fork of
 The original project's history up to v0.2.0-beta.1 is its own; this file starts
 at the fork.
 
+## [0.2.1] - 2026-11-27
+
+### Fixed
+
+- **Author metadata corrected.** `codeowners` now credits this fork's actual
+  repository owner (`@boronz`) instead of the upstream author.
+- **Documentation and issue links corrected.** `documentation` and
+  `issue_tracker` now point to
+  [boronz/NL-BE-Energieprijzen](https://github.com/boronz/NL-BE-Energieprijzen)
+  instead of the original Frank Quarter Prices project, so the help button and
+  issue link no longer lead to someone else's repository.
+- README refreshed: the provider overview now shows the EPEX source, and a
+  duplicated note was removed.
+
+### Notes
+
+- HACS may display a commit hash instead of a semantic version for repositories
+  without a GitHub release. That is cosmetic; `manifest.json` is at 0.2.1.
+
 ## [0.2.0] - 2026-11-27
 
 ### Added

@@ -7,18 +7,19 @@ This is a provider-agnostic fork of
 [Bennie-JC/ha-frank-quarter-prices](https://github.com/Bennie-JC/ha-frank-quarter-prices).
 The data model, the entity contract, the price-zone and optimal-period logic and
 the quarter-hour refresh behaviour are the original integration's. The price
-source is now pluggable: the config flow asks which provider to use, and each
-provider gets its own device and its own set of entities, so **Frank Energie and
-Tibber can be used side by side**.
+source is pluggable: the config flow asks which source to use, and each entry
+gets its own device and its own set of entities, so **Frank Energie, Tibber and
+any provider on epexprijzen.nl/.be can be used side by side**.
 
-| | Frank Energie | Tibber |
-|---|---|---|
-| Credentials | none (public market prices) | personal access token |
-| Markets | Netherlands, Belgium | any Tibber home whose prices are in EUR (NL, BE, DE) |
-| Resolution | native 15-minute prices when published, hourly otherwise | native 15-minute prices when the market publishes them, hourly otherwise |
-| Current price sensor | Frank's dynamic "marktprijs+" component | Tibber's all-in price (`total`) |
-| All-in prices, zones, optimal periods | same normalized model | same normalized model |
-| Feed-in estimate base | spot market price (`market_price`) | spot price (`energy`) |
+| | Frank Energie | Tibber | Provider via EPEX |
+|---|---|---|---|
+| Credentials | none (public market prices) | personal access token | none |
+| Markets | Netherlands, Belgium | any Tibber home whose prices are in EUR (NL, BE, DE) | Netherlands and Belgium (per region) |
+| Coverage | Frank only | your Tibber home only | ~34 NL and ~29 BE providers on epexprijzen.nl/.be |
+| Resolution | native 15-minute prices when published, hourly otherwise | native 15-minute prices when the market publishes them, hourly otherwise | choose quarterly (15 min) or hourly (60 min) |
+| Current price sensor | Frank's dynamic "marktprijs+" component | Tibber's all-in price (`total`) | the provider's all-in price |
+| All-in prices, zones, optimal periods | same normalized model | same normalized model | same normalized model |
+| Feed-in estimate base | spot market price (`market_price`) | spot price (`energy`) | derived bare spot price |
 
 ---
 
@@ -125,9 +126,6 @@ entity ids are for example `sensor.eneco_current_price` or
 The resolution can be changed later under **Settings → Devices & Services →
 Quarter Prices → Configure**. Quarter-hourly data gives 96 prices per day;
 hourly data gives 24.
-
-> To change provider or market country, remove the entry and add it again. A
-> token refresh does not require that.
 
 > To change provider or market country, remove the entry and add it again. A
 > token refresh does not require that.
