@@ -141,7 +141,10 @@ def calculate_feed_in_price(
 
 
 def calculate_dynamic_price(price_block: Mapping[str, Any] | None) -> float | None:
-    """Return Frank's "marktprijs+" price for a block, in EUR/kWh.
+    """Return the shared dynamic price basis for a block, in EUR/kWh.
+
+    This is the fallback used when a provider does not supply an explicit
+    ``dynamic_price_eur_kwh`` (EPEX does). For Frank it is "marktprijs+".
 
         marktprijs+ = market_price + market_price_tax + sourcing_markup_price
 

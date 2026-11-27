@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
+from itertools import pairwise
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -201,7 +202,7 @@ async def test_dst_days_are_continuous(hass, aioclient_mock, day, expected):
 
     assert len(blocks) == expected
     assert {block["duration_minutes"] for block in blocks} == {15}
-    for previous, block in zip(blocks, blocks[1:]):
+    for previous, block in pairwise(blocks):
         assert previous["till"] == block["from"]
     assert blocks[-1]["till"].astimezone(TZ).strftime("%H:%M") == "00:00"
 

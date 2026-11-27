@@ -34,7 +34,7 @@ SUPPORTED_PROVIDERS: Final[tuple[str, ...]] = (
 PROVIDER_LABELS: Final[dict[str, str]] = {
     PROVIDER_FRANK: "Frank Energie",
     PROVIDER_TIBBER: "Tibber",
-    PROVIDER_EPEX: "Other provider (EPEX)",
+    PROVIDER_EPEX: "Provider via EPEX",
 }
 
 # --- Tibber credentials and home ---------------------------------------------

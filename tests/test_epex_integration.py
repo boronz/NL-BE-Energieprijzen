@@ -177,3 +177,21 @@ async def test_epex_entity_ids_follow_the_provider_name(hass, aioclient_mock):
         freezer.stop()
 
     assert hass.states.get("sensor.zonneplan_current_price") is not None
+
+
+async def test_epex_diagnostics_show_source_details(hass, aioclient_mock):
+    """Diagnostics expose market, region, provider id and resolution."""
+    from custom_components.quarter_prices.diagnostics import (
+        async_get_config_entry_diagnostics,
+    )
+
+    entry = epex_entry()
+    await setup_epex(hass, aioclient_mock, entry)
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diagnostics["provider"]["id"] == PROVIDER_EPEX
+    assert diagnostics["provider"]["market"] == MARKET_NL
+    assert diagnostics["provider"]["epex_provider_id"] == "eneco"
+    assert diagnostics["resolved_options"]["resolution"] == RESOLUTION_QUARTERLY
+    assert diagnostics["resolved_options"]["market_timezone"] == TEST_TIMEZONE

@@ -8,7 +8,7 @@
           "provider": "Energieleverancier"
         },
         "data_description": {
-          "provider": "Frank Energie leest de openbare Frank-marktprijzen voor Nederland of België en heeft geen account nodig. Tibber leest de prijzen van jouw eigen Tibber-woning en heeft een persoonlijk toegangstoken nodig. Overige aanbieder (EPEX) gebruikt epexprijzen.nl/.be voor de gepubliceerde all-in dynamische tarieven van veel Nederlandse en Belgische aanbieders, met keuze tussen kwartier- en uurprijzen."
+          "provider": "Frank Energie leest de openbare Frank-marktprijzen voor Nederland of België en heeft geen account nodig. Tibber leest de prijzen van jouw eigen Tibber-woning en heeft een persoonlijk toegangstoken nodig. Aanbieder via EPEX gebruikt epexprijzen.nl/.be voor de gepubliceerde all-in dynamische tarieven van veel Nederlandse en Belgische aanbieders, met keuze tussen kwartier- en uurprijzen."
         }
       },
       "frank": {
@@ -43,7 +43,7 @@
         }
       },
       "epex_market": {
-        "title": "Overige aanbieder (EPEX)",
+        "title": "Aanbieder via EPEX",
         "description": "Kies de markt. epexprijzen.nl dekt Nederlandse aanbieders; epexprijzen.be dekt Belgische aanbieders per gewest. Deze bron heeft geen account nodig.",
         "data": {
           "market": "Markt"
@@ -118,7 +118,7 @@
           "optimal_cheap_duration_minutes": "De exacte lengte van de goedkoopste periode, in minuten. Van 15 tot 720 minuten in stappen van 15. Alleen van toepassing wanneer de optimale goedkope periode hierboven is ingeschakeld. De periode is altijd exact deze lengte en aaneengesloten; past de duur niet op de blokken van de dag (bijvoorbeeld 90 minuten op een dag met uurprijzen), dan blijft het resultaat onbeschikbaar in plaats van dat er blokken worden opgeknipt.",
           "optimal_expensive_enabled": "Zoekt de duurste aaneengesloten periode van precies de hieronder ingestelde duur, voor vandaag en voor morgen. Handig om verbruik te vermijden of juist terug te leveren. Dit staat volledig los van de dure prijszone: er wordt alleen gekeken naar de werkelijke prijzen en de gekozen duur, nooit naar de zonemarge. Zolang deze optie nooit is ingeschakeld, worden de bijbehorende entiteiten niet aangemaakt. Schakel je hem later weer uit, dan blijven eerder aangemaakte entiteiten bestaan als onbeschikbaar, zodat entity-ID's en aanpassingen behouden blijven.",
           "optimal_expensive_duration_minutes": "De exacte lengte van de duurste periode, in minuten. Van 15 tot 720 minuten in stappen van 15. Alleen van toepassing wanneer de optimale dure periode hierboven is ingeschakeld.",
-          "resolution": "Kies kwartierprijzen (15 min) of uurprijzen (60 min). Geldt alleen voor 'Overige aanbieder (EPEX)'-items. Wijzigen herlaadt de integratie; bij uurprijzen blijven de optimale periodes met 15-minutenduur onbeschikbaar."
+          "resolution": "Kies kwartierprijzen (15 min) of uurprijzen (60 min). Geldt alleen voor 'Aanbieder via EPEX'-items. Wijzigen herlaadt de integratie; bij uurprijzen blijven de optimale periodes met 15-minutenduur onbeschikbaar."
         }
       }
     },

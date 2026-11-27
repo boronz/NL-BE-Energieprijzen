@@ -293,12 +293,13 @@ class QuarterPricesCurrentPriceSensor(QuarterPricesEntity, SensorEntity):
     For Frank this is the "marktprijs+" component (market price + VAT + sourcing
     markup), which Frank bills as "het dynamische deel". For Tibber it is the
     all-in price (energy + tax), because Tibber does not expose a separate
-    markup. It is the "current electricity price" entity for the Home Assistant
-    Energy Dashboard: monetary device class, EUR/kWh. No ``state_class`` is set:
-    this is an instantaneous price, not a cumulative total. The state stays
-    numeric, or unavailable when no block covers the active quarter. The all-in
-    price also remains reachable on the same entity as
-    ``full_block.total_price_eur_kwh``.
+    markup. For an EPEX entry it is the provider's published all-in price, which
+    the provider places in ``dynamic_price_eur_kwh``. It is the "current
+    electricity price" entity for the Home Assistant Energy Dashboard: monetary
+    device class, EUR/kWh. No ``state_class`` is set: this is an instantaneous
+    price, not a cumulative total. The state stays numeric, or unavailable when
+    no block covers the active quarter. The all-in price also remains reachable
+    on the same entity as ``full_block.total_price_eur_kwh``.
     """
 
     _attr_device_class = SensorDeviceClass.MONETARY

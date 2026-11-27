@@ -7,6 +7,50 @@ This project is a provider-agnostic fork of
 The original project's history up to v0.2.0-beta.1 is its own; this file starts
 at the fork.
 
+## [0.2.0] - 2026-11-27
+
+### Added
+
+- **Generic provider source: "Provider via EPEX".** Uses the public
+  epexprijzen.nl / epexprijzen.be API to offer the published all-in dynamic
+  tariff of every provider the site models (~34 NL, ~29 BE), including Frank
+  Energie, Tibber, Eneco, Vattenfall, Essent, Greenchoice, Zonneplan, ANWB
+  Energie and others. No account or API key is required.
+- **Live provider list and Belgian regions.** The setup dialog fetches
+  `/api/v1/providers`; for Belgium it asks for Flanders, Brussels or Wallonia and
+  filters the list, passing `?region=` to the price endpoint.
+- **Quarter or hour resolution.** EPEX entries can publish 15-minute (96/day) or
+  60-minute (24/day) prices. The choice is made at setup and can be changed in
+  the integration options; changing it reloads the entry and clears the day
+  cache.
+- **Provider-named devices and entities.** An EPEX entry for Eneco creates
+  `sensor.eneco_*`; an entry for Zonneplan creates `sensor.zonneplan_*` (the EPEX
+  source itself is not the device name).
+- **All-in current price for EPEX entries.** The published all-in price is used
+  for `current_price`; direct Frank/Tibber keep their existing behaviour.
+- **Price reconstruction and feed-in base.** `energy_tax`, `provider_charge` and
+  `spot_coefficient` are used to split the all-in price into the shared block
+  components and to derive the bare spot price used by the feed-in sensor.
+- **Tests:** EPEX parsing (quarter/hour, DST, negative prices, component sums),
+  HTTP retries/404s, provider-list normalization, NL/BE config flows, duplicate
+  detection, resolution options and a full entity setup.
+
+### Changed
+
+- `PriceProvider` consumers can now override the current-price value per block
+  via `dynamic_price_eur_kwh`; the coordinator falls back to the shared dynamic
+  calculation when the field is absent.
+- Diagnostics show the EPEX market, region, provider id and resolution.
+- Translations (EN/NL), README, examples and the changelog document the new
+  source and its limits (no feed-in tariffs, no contract-specific markup, no
+  markets outside NL/BE, third-party API without SLA).
+
+### Notes
+
+- The EPEX source is additive: direct Frank Energie and Tibber remain available
+  for exact supplier fields, non-NL/BE markets and independence from the
+  third-party service.
+
 ## [0.1.0] - 2026-11-27
 
 ### Added

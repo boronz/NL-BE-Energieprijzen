@@ -199,6 +199,9 @@ _CONFIG_STEPS = {
     "tibber": ("access_token",),
     "tibber_home": ("home_id",),
     "reauth_confirm": ("access_token",),
+    "epex_market": ("market",),
+    "epex_region": ("region",),
+    "epex_provider": ("epex_provider_id", "resolution"),
 }
 
 _CONFIG_ERRORS = (
@@ -210,6 +213,9 @@ _CONFIG_ERRORS = (
     "no_price_info",
     "unsupported_currency",
     "wrong_account",
+    "no_providers",
+    "invalid_provider",
+    "invalid_resolution",
 )
 
 _CONFIG_ABORTS = ("already_configured", "reauth_successful", "reauth_not_supported")
@@ -244,3 +250,12 @@ async def test_config_abort_is_translated(hass, language, reason):
     """Every abort reason the config flow can return has a message."""
     bundle = await async_get_translations(hass, language, "config", {DOMAIN})
     assert f"component.{DOMAIN}.config.abort.{reason}" in bundle
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+async def test_epex_resolution_option_is_translated(hass, language):
+    """The EPEX-only resolution option has a label and explanation."""
+    bundle = await async_get_translations(hass, language, "options", {DOMAIN})
+    prefix = f"component.{DOMAIN}.options.step.init"
+    assert f"{prefix}.data.resolution" in bundle
+    assert f"{prefix}.data_description.resolution" in bundle

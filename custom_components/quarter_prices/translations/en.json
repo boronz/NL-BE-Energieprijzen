@@ -8,7 +8,7 @@
           "provider": "Energy provider"
         },
         "data_description": {
-          "provider": "Frank Energie reads the public Frank market prices for the Netherlands or Belgium and needs no account. Tibber reads your own Tibber home's prices and needs a personal access token. Other provider (EPEX) uses epexprijzen.nl/.be to offer the published all-in dynamic tariffs of many Dutch and Belgian providers, with a choice of quarter-hourly or hourly prices."
+          "provider": "Frank Energie reads the public Frank market prices for the Netherlands or Belgium and needs no account. Tibber reads your own Tibber home's prices and needs a personal access token. Provider via EPEX uses epexprijzen.nl/.be to offer the published all-in dynamic tariffs of many Dutch and Belgian providers, with a choice of quarter-hourly or hourly prices."
         }
       },
       "frank": {
@@ -43,7 +43,7 @@
         }
       },
       "epex_market": {
-        "title": "Other provider (EPEX)",
+        "title": "Provider via EPEX",
         "description": "Choose the market. epexprijzen.nl covers Dutch providers; epexprijzen.be covers Belgian providers by region. This source needs no account.",
         "data": {
           "market": "Market"
@@ -118,7 +118,7 @@
           "optimal_cheap_duration_minutes": "The exact length of the cheapest period, in minutes. From 15 to 720 minutes in steps of 15. Only applies while the optimal cheap period above is enabled. The period is always exactly this long and contiguous; if the duration does not fit the day's blocks (90 minutes on an hourly-price day, for instance) the result stays unavailable rather than splitting a price block.",
           "optimal_expensive_enabled": "Finds the most expensive contiguous period of exactly the duration set below, for today and for tomorrow. Useful for avoiding consumption or for planning export. Completely separate from the expensive price zone: only the actual prices and the chosen duration are used, never the zone margin. While this option has never been switched on, the matching entities are not created at all. Switch it off again later and entities created earlier remain as unavailable, so entity IDs and customizations are preserved.",
           "optimal_expensive_duration_minutes": "The exact length of the most expensive period, in minutes. From 15 to 720 minutes in steps of 15. Only applies while the optimal expensive period above is enabled.",
-          "resolution": "Choose quarter-hourly (15 min) or hourly (60 min) prices. Only applies to 'Other provider (EPEX)' entries. Changing it reloads the integration; hourly data leaves the 15-minute optimal-period durations unavailable."
+          "resolution": "Choose quarter-hourly (15 min) or hourly (60 min) prices. Only applies to 'Provider via EPEX' entries. Changing it reloads the integration; hourly data leaves the 15-minute optimal-period durations unavailable."
         }
       }
     },

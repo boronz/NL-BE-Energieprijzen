@@ -1,7 +1,7 @@
 # Quarter Prices
 
-Quarter-hourly electricity prices for Home Assistant — with a **choice of energy
-provider**.
+Quarter-hourly (and hourly) electricity prices for Home Assistant — with a
+**choice of energy provider**.
 
 This is a provider-agnostic fork of
 [Bennie-JC/ha-frank-quarter-prices](https://github.com/Bennie-JC/ha-frank-quarter-prices).
@@ -26,8 +26,10 @@ Tibber can be used side by side**.
 
 - **15-minute prices** for today and tomorrow, with automatic hourly fallback
   when the market or the API only provides hourly data.
-- **Provider selection at setup** — Frank Energie or Tibber, several entries
-  allowed, each on its own device.
+- **Provider selection at setup** — Frank Energie, Tibber, or any provider on
+  epexprijzen.nl/.be. Several entries are allowed, each on its own device.
+- **Quarter or hour prices** — EPEX entries choose 15-minute or 60-minute
+  resolution at setup, and can change it later in the options.
 - **Existing entity contract preserved** — current price, feed-in price, whole-day
   price arrays, cheapest/most-expensive blocks and times, cheap/expensive price
   zones and optional optimal cheap/expensive periods.
@@ -100,6 +102,33 @@ If Tibber later rejects the token, Home Assistant shows a **Reauthenticate**
 action on the entry. Enter a new token for the same home; entities, entity ids
 and customizations are preserved.
 
+### Provider via EPEX
+
+This source uses the public [epexprijzen.nl](https://epexprijzen.nl/api-documentatie)
+/ [epexprijzen.be](https://epexprijzen.be) API. It offers the published all-in
+dynamic tariff of every provider the site currently models — around 34 in the
+Netherlands and 29 in Belgium, including Frank Energie, Tibber, Eneco,
+Vattenfall, Essent, Greenchoice, Zonneplan, ANWB Energie, Budget Energie,
+Coolblue Energie and others. **No account or API key is required.**
+
+1. Choose the market: **Netherlands** or **Belgium**.
+2. For Belgium, choose the region (Flanders, Brussels or Wallonia). The provider
+   list and the regional levies both follow that choice.
+3. Choose the provider and the resolution: **quarter-hourly (15 min)** or
+   **hourly (60 min)**.
+
+The provider list is loaded live from the site, so newly added providers appear
+without an integration update. The device is named after the chosen provider, so
+entity ids are for example `sensor.eneco_current_price` or
+`sensor.zonneplan_prices_today`.
+
+The resolution can be changed later under **Settings → Devices & Services →
+Quarter Prices → Configure**. Quarter-hourly data gives 96 prices per day;
+hourly data gives 24.
+
+> To change provider or market country, remove the entry and add it again. A
+> token refresh does not require that.
+
 > To change provider or market country, remove the entry and add it again. A
 > token refresh does not require that.
 
@@ -107,12 +136,13 @@ and customizations are preserved.
 
 ## Entities
 
-Every entity id is prefixed with the provider's device name. The table uses
-`<provider>` = `frank` or `tibber`.
+Every entity id is prefixed with the device name. For a direct entry that is
+`frank` or `tibber`; for an EPEX entry it is the chosen provider's name, for
+example `eneco` or `zonneplan`. The table uses `<provider>` for that prefix.
 
 | Entity | Type | Meaning |
 |---|---|---|
-| `sensor.<provider>_current_price` | EUR/kWh | Current dynamic import price. Frank: marktprijs+ (spot + VAT + sourcing markup). Tibber: all-in `total` (energy + tax). |
+| `sensor.<provider>_current_price` | EUR/kWh | Current import price. Frank: marktprijs+ (spot + VAT + sourcing markup). Tibber: all-in `total` (energy + tax). EPEX: the provider's published all-in price. |
 | `sensor.<provider>_current_return_price` | EUR/kWh | Estimated feed-in price: spot price + configured adjustment (+ optional 21% VAT). |
 | `sensor.<provider>_prices_today` | blocks | Number of blocks today; `prices` attribute carries the full array. |
 | `sensor.<provider>_prices_tomorrow` | blocks | Number of blocks tomorrow; unavailable until published. |
@@ -175,6 +205,13 @@ Enable **Apply 21% VAT to feed-in price** when your compensation is calculated
 including VAT. This is a manual choice; it is not read from either provider.
 The 21% rate matches the Dutch and Belgian standard rate.
 
+### Price resolution (EPEX only)
+
+EPEX entries can publish quarter-hourly (96 prices/day) or hourly (24 prices/day)
+data. Changing the resolution reloads the integration. On hourly data, an
+optimal period whose duration is not a whole number of 60-minute blocks stays
+unavailable, because price blocks are never split or interpolated.
+
 ### Price zones
 
 Both margins are a percentage of the day's own price *range* (cheapest block to
@@ -215,6 +252,7 @@ zone margins.
 |---|---|
 | Today's prices | fetched once, when no complete day is cached |
 | Tomorrow's prices | not requested before 12:00 market time; retried on the next quarter tick until published; backoff after repeated failures |
+| EPEX today + tomorrow | fetched together in one request and cached for the day |
 | Active block, current price, zones, optimal periods | recalculated on every quarter tick from cached blocks |
 | Full refresh | `:00`, `:15`, `:30`, `:45` plus 3 seconds, wall clock |
 
@@ -223,6 +261,56 @@ midnight-to-midnight span without gaps or overlaps. That is 92 blocks on the
 spring-forward day (23 hours), 96 normally and 100 on the fall-back day
 (25 hours), or 23/24/25 hourly blocks. Incomplete days are used for the current
 update but never frozen in.
+
+---
+
+## What the EPEX source can and cannot provide
+
+**Available:**
+
+- The provider's **all-in purchase price** including VAT, energy tax and the
+  provider's charge, in EUR/kWh, for both quarter-hour and hour resolution.
+- The provider's `energy_tax`, `provider_charge` and `spot_coefficient`, which
+  are enough to reconstruct the bare energy/spot price that the feed-in sensor
+  uses.
+- A **live list of supported providers**, plus the Belgian region-specific
+  tariffs and levies.
+
+The reconstruction matches Frank Energie's own live API to within
+€0.0001/kWh (rounding) on all 96 quarter blocks of a checked day.
+
+**Not available (and why):**
+
+- **Feed-in / return-to-grid tariffs per provider.** The API only returns
+  purchase prices. The feed-in sensor therefore uses the derived bare spot price
+  plus the existing user-configured adjustment and VAT options. A supplier's true
+  feed-in formula (for example a percentage of spot minus a fee) is not exposed.
+  The derived base also includes the provider's `spot_coefficient`, so it is the
+  provider's energy purchase price rather than necessarily the raw EPEX index
+  used for feed-in.
+- **Your contract's exact markup or discount.** The site models the provider's
+  published standard dynamic product (and some named variants), not an
+  individual customer's contract, promotional discount or business tariff.
+- **A full, explicit price breakdown.** Only `energy_tax`, `provider_charge` and
+  `spot_coefficient` are returned. The split into `market_price` and
+  `market_price_tax` is a faithful reconstruction under Dutch/Belgian 21% VAT,
+  not a field supplied by the API. The all-in `total_price_eur_kwh` used by every
+  price entity is the API's value unchanged, so a different VAT regime would
+  only affect the split and the feed-in base.
+- **Providers outside the site's curated list.** If your provider is missing,
+  the integration cannot invent it. The site asks users to report missing or
+  incorrect providers; the list is fetched live when you open the setup dialog.
+- **Markets outside the Netherlands and Belgium.** epexprijzen.nl and
+  epexprijzen.be cover NL and BE only. For other markets, use the direct Tibber
+  provider (where available) or another integration.
+- **An SLA or a stable, versioned API contract.** epexprijzen.nl/.be is a free
+  third-party service, not the official EPEX or a supplier API. It is used by
+  other Home Assistant projects, but it can change. Diagnostics and the direct
+  Frank/Tibber providers exist partly as a fallback for that reason.
+
+This is why the direct **Frank Energie** and **Tibber** sources are kept: for
+those two suppliers they use the supplier's own API, expose exact fields, cover
+markets the generic source does not, and do not depend on a third party.
 
 ---
 
@@ -269,6 +357,17 @@ retried every 15 minutes, with a 30-minute backoff after repeated errors.
 <https://developer.tibber.com/> and start with `tibber_pat_`. Use the
 **Reauthenticate** action on the entry to replace one.
 
+**My provider is missing from the EPEX list.** The list is fetched live from
+epexprijzen.nl/.be and only contains providers the site has a verified tariff
+for. Choose the direct provider if one exists, or report the missing provider to
+the site.
+
+**An EPEX price differs from my bill.** The API models the published standard
+tariff of the provider and region, not contract-specific discounts, business
+tariffs or a different meter/region. The all-in price was checked against Frank
+Energie's live API and agrees within rounding; for other providers the site's
+published tariff is authoritative.
+
 **Tibber says the currency is unsupported.** The integration's price entities
 are denominated in euro. Tibber homes priced in NOK, SEK or DKK are rejected
 during setup rather than publishing a value under the wrong unit.
@@ -301,6 +400,7 @@ custom_components/quarter_prices/
 │   ├── base.py       # PriceProvider interface + normalized block contract
 │   ├── frank.py      # public Frank Energie GraphQL market prices
 │   ├── tibber.py     # authenticated Tibber GraphQL prices
+│   ├── epex.py       # generic epexprijzen.nl/.be provider + resolution
 │   └── __init__.py   # registry + factory
 ├── config_flow.py    # provider selection, Tibber token/home, reauth, options
 ├── coordinator.py    # provider-independent cache, completeness, zones, periods
@@ -334,6 +434,11 @@ flow are additions in this fork. See [LICENSE](LICENSE).
 
 Tibber and Frank Energie are trademarks of their respective owners. This project
 is not affiliated with either company.
+
+The optional generic provider uses the public API of
+[epexprijzen.nl](https://epexprijzen.nl/api-documentatie) /
+[epexprijzen.be](https://epexprijzen.be). That service is independent from this
+project and from EPEX Spot; its provider tariffs and availability are its own.
 
 ---
 
